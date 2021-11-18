@@ -57,6 +57,25 @@ namespace alembic {
             }
         }
     };
+
+    /**
+     * Apply the given functor to every element statically assignable to the given type.
+     * @tparam X the type
+     */
+    template <class X> struct tap {
+        using functor_t = void(const X&&);
+        using input_t = X;
+        using output_t = X;
+
+        std::function<functor_t> functor;
+
+        template <size_t I, class F> constexpr void emit(const X &&x, const F *flow) const {
+            functor(std::move(x));
+            if constexpr (I + 1 < F::length) {
+                flow->template attractor<I+1>().template emit<I+1, F>(std::move(x), flow);
+            }
+        }
+    };
 }
 
 #endif //ALEMBIC_MAP_H

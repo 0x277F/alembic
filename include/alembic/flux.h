@@ -55,6 +55,10 @@ namespace alembic {
             return vec.size();
         }
 
+        template <attractor_type H> size_t attach(const H &h) {
+            return attach(flow(h));
+        }
+
         /**
          * Detach a flow from the flux.
          * @param i the identifier obtained with `attach`
