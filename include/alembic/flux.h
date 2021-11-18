@@ -17,6 +17,9 @@
 #ifndef ALEMBIC_FLUX_H
 #define ALEMBIC_FLUX_H
 
+#include <vector>
+#include "flow.h"
+
 namespace alembic {
 
     /**
