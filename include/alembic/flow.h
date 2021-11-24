@@ -44,8 +44,8 @@ namespace alembic {
     };
 
     template <class A, class X, class F, size_t I, class = void> struct attractor_takes: std::false_type { };
-    template <class A, class X, class F, size_t I> struct attractor_takes<A, X, F, I, std::enable_if_t<std::is_invocable_v<decltype(&A::template emit<I, F>), A&, X&&, F*>>>: std::true_type { };
-    template <class A, class X, class F, size_t I> struct attractor_takes<A, X, F, I, std::enable_if_t<std::is_invocable_v<decltype(&A::template emit<I, F, X>), A&, X&&, F*>>>: std::true_type { };
+    template <class A, class X, class F, size_t I> struct attractor_takes<A, X, F, I, std::enable_if_t<std::is_invocable_v<decltype(&A::template emit<I, F>), A&, X, F*>>>: std::true_type { };
+    template <class A, class X, class F, size_t I> struct attractor_takes<A, X, F, I, std::enable_if_t<std::is_invocable_v<decltype(&A::template emit<I, F, X>), A&, X, F*>>>: std::true_type { };
 
     /**
      * Determine if an attractor would accept an element at a specific type in a given flow

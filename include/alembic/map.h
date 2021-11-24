@@ -30,9 +30,9 @@ namespace alembic {
         using input_t = X;
         using output_t = Y;
 
-        template <size_t I, class F> constexpr void emit(const X &&x, const F *flow) const {
+        template <size_t I, class F> constexpr void emit(const X x, const F *flow) const {
             if constexpr(I + 1 < F::length) {
-                flow->template attractor<I+1>().template emit<I+1, F>(static_cast<Y>(std::forward<const X>(x)), flow);
+                flow->template attractor<I+1>().template emit<I+1, F>(static_cast<Y>(std::move(x)), flow);
             }
         }
     };
@@ -43,13 +43,13 @@ namespace alembic {
      * @tparam Y the type to convert to
      */
     template <class X, class Y> struct map {
-        using functor_t = Y(const X&&);
+        using functor_t = Y(X);
         using input_t = X;
         using output_t = Y;
 
         std::function<functor_t> functor;
 
-        template <size_t I, class F> constexpr void emit(const X &&x, const F *flow) const {
+        template <size_t I, class F> constexpr void emit(const X x, const F *flow) const {
             if constexpr (I + 1 >= F::length || std::is_void_v<Y>) {
                 functor(std::move(x));
             } else {
@@ -63,13 +63,13 @@ namespace alembic {
      * @tparam X the type
      */
     template <class X> struct tap {
-        using functor_t = void(const X&&);
+        using functor_t = void(X);
         using input_t = X;
         using output_t = X;
 
         std::function<functor_t> functor;
 
-        template <size_t I, class F> constexpr void emit(const X &&x, const F *flow) const {
+        template <size_t I, class F> constexpr void emit(const X x, const F *flow) const {
             functor(std::move(x));
             if constexpr (I + 1 < F::length) {
                 flow->template attractor<I+1>().template emit<I+1, F>(std::move(x), flow);

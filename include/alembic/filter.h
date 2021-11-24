@@ -28,9 +28,9 @@ namespace alembic {
         using input_t = X;
         using output_t = X;
 
-        const std::function<bool(const X&&)> predicate;
+        const std::function<bool(X)> predicate;
 
-        template <size_t I, class F> constexpr void emit(const X &&x, const F *flow) const {
+        template <size_t I, class F> constexpr void emit(const X x, const F *flow) const {
             if constexpr (I + 1 < F::length) {
                 if (predicate(std::move(x))) {
                     flow->template attractor<I + 1>().template emit<I+1, F>(std::move(x), flow);

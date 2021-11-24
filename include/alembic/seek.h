@@ -26,10 +26,10 @@ namespace alembic {
         template <size_t I, class F, class X, class = void> struct find_next: std::enable_if_t<I+1 < F::length, find_next<I+1, F, X>> { };
         template <size_t I, class F, class X> struct find_next<I, F, X, std::enable_if_t<alembic::attractor_takes_v<std::tuple_element_t<I, typename F::flow_types>, X, F, I>>>: std::integral_constant<size_t, I> { };
 
-        template <size_t I, class F, class X> constexpr void emit(const X &&x, const F *flow) const {
+        template <size_t I, class F, class X> constexpr void emit(const X x, const F *flow) const {
             if constexpr (I + 1 < F::length) {
                 constexpr size_t target = find_next<I+1, F, X>::value;
-                flow->template attractor<target>().template emit<target, F>(x, flow);
+                flow->template attractor<target>().template emit<target, F>(std::move(x), flow);
             }
         }
     };

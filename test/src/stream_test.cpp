@@ -20,7 +20,7 @@
 #include <alembic/part.h>
 #include <alembic/flux.h>
 
-TEST(stream_test, part_stream) {
+TEST(stream_test, double_part_stream) {
     double y = 0.;
     double z = 0.;
     alembic::flow f = alembic::map<double, double> { [](auto &&x) { return x / 2; } }
@@ -36,8 +36,12 @@ TEST(stream_test, part_stream) {
     f.attractor<0>().emit<0>(20., &f);
     EXPECT_DOUBLE_EQ(y, 10.);
     EXPECT_DOUBLE_EQ(z, 10.);
+}
 
-    alembic::flux<double> flux;
-    std::cout << "flow " << flux.attach(f) << " ";
-    flux.emit(1);
+TEST(stream_test, flux_stream) {
+    char out[12];
+    alembic::flux<const char *> f;
+    f.attach(alembic::tap<const char *> { [&out](auto &&x) -> void { strcpy(out, x); } });
+    f.emit("swordfish");
+    EXPECT_STREQ(out, "swordfish");
 }

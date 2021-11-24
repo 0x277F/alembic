@@ -27,7 +27,7 @@ namespace alembic {
      * @tparam X the type of element being admitted to the head of the flow
      * @tparam Vec the storage backing for functions which accept a reference to the element and emit them to the flow.
      */
-    template <class X, class Vec = std::vector<std::function<void(const X&&)>>> class flux {
+    template <class X, class Vec = std::vector<std::function<void(X)>>> class flux {
     protected:
         Vec vec;
 
@@ -37,7 +37,7 @@ namespace alembic {
          * @param x the element ot emit
          * @return the same flux
          */
-        flux<X, Vec> &emit(const X &&x) {
+        flux<X, Vec> &emit(X x) {
             std::for_each(vec.begin(), vec.end(), [x](auto &a){ a(std::move(x)); });
             return *this;
         }
@@ -55,8 +55,8 @@ namespace alembic {
             return vec.size();
         }
 
-        template <attractor_type H> size_t attach(const H &h) {
-            return attach(flow(h));
+        template <class H> size_t attach(const H &&h) {
+            return attach(alembic::flow(h));
         }
 
         /**

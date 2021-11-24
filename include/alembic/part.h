@@ -20,7 +20,7 @@
 namespace alembic {
     /**
      * Partition a flow, emitting an element to a subflow then discarding the result and passing the original element to the
-     * next attractor
+     * next attractor.
      * @tparam H the first attractor in the subflow
      * @tparam A trailing attractor types in the subflow
      */
@@ -31,7 +31,7 @@ namespace alembic {
         part(const H &&_attractor): subflow { std::move(_attractor) } { }
 
         template <size_t I, class F, class X> constexpr void emit(const X &&x, const F *flow) const {
-            subflow.template attractor<0>().template emit<0, decltype(subflow)>(std::move(x), &subflow);
+            subflow.template attractor<0>().template emit<0, decltype(subflow)>(x, &subflow);
             if constexpr(I + 1 < F::length) {
                 flow->template attractor<I + 1>().template emit<I + 1, F>(std::move(x), flow);
             }
