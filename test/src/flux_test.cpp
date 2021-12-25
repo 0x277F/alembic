@@ -15,15 +15,12 @@
  */
 
 #include <gtest/gtest.h>
-#include <alembic/map.h>
-#include <alembic/filter.h>
-#include <alembic/part.h>
 #include <alembic/flux.h>
 
-TEST(stream_test, double_part_stream) {
+TEST(flux_test, double_part_stream) {
     double y = 0.;
     double z = 0.;
-    alembic::flow f = alembic::map<double, double> { [](auto &&x) { return x / 2; } }
+    auto f = alembic::map<double, double> { [](auto &&x) { return x / 2; } }
             >> alembic::part {
                 alembic::filter<double> { [](auto &&x){ return x > 5; } }
                 >> alembic::map<double, void> { [&y](auto &&x){ y = x; } }
@@ -38,10 +35,19 @@ TEST(stream_test, double_part_stream) {
     EXPECT_DOUBLE_EQ(z, 10.);
 }
 
-TEST(stream_test, flux_stream) {
+TEST(flux_test, flux_stream) {
     char out[12];
     alembic::flux<const char *> f;
-    f.attach(alembic::tap<const char *> { [&out](auto &&x) -> void { strcpy(out, x); } });
-    f.emit("swordfish");
+    f.attach(alembic::flow(alembic::tap<const char *> { [&out](auto &&x) -> void { strcpy(out, x); } }))
+        .emit("swordfish");
     EXPECT_STREQ(out, "swordfish");
+}
+
+TEST(flux_test, exception) {
+    char out[6];
+    alembic::flux<const char *> f;
+    f.attach(alembic::flow(alembic::tap<const char *> { [](auto &&x) -> void { throw std::runtime_error("hello"); } }))
+        .except(alembic::flow(alembic::tap<const std::exception &> { [&out](auto &ex) { strcpy(out, ex.what()); }}))
+        .emit("hi");
+    EXPECT_STREQ(out, "hello");
 }

@@ -13,7 +13,7 @@ set(gtest_force_shared_crt ON CACHE BOOL "" FORCE)
 FetchContent_MakeAvailable(googletest)
 enable_testing()
 
-add_executable(alembic_tests src/attractor_traits.cpp src/stream_test.cpp)
+add_executable(alembic_tests src/attractor_traits.cpp src/flux_test.cpp src/builtins.cpp)
 target_include_directories(alembic_tests PRIVATE ${CMAKE_SOURCE_DIR}/include)
 target_link_libraries(alembic_tests gtest_main)
 include(GoogleTest)

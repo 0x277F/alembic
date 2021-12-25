@@ -17,19 +17,19 @@
 #ifndef ALEMBIC_FLUX_H
 #define ALEMBIC_FLUX_H
 
-#include <vector>
-#include "flow.h"
+#include <exception>
+#include "attractors_builtin.h"
+#include "util.h"
 
 namespace alembic {
 
     /**
      * Represents the point at which elements might be emitted to a flow.
      * @tparam X the type of element being admitted to the head of the flow
-     * @tparam Vec the storage backing for functions which accept a reference to the element and emit them to the flow.
      */
-    template <class X, class Vec = std::vector<std::function<void(X)>>> class flux {
-    protected:
-        Vec vec;
+    template <class X> class flux {
+        burst<X> main_burst;
+        burst<const std::exception &> exception_burst;
 
     public:
         /**
@@ -37,35 +37,59 @@ namespace alembic {
          * @param x the element ot emit
          * @return the same flux
          */
-        flux<X, Vec> &emit(X x) {
-            std::for_each(vec.begin(), vec.end(), [x](auto &a){ a(std::move(x)); });
+        const flux<X> &emit(X x) const {
+            try {
+                main_burst.inner_emit(x);
+            } catch (const std::exception &ex) {
+                exception_burst.inner_emit(ex);
+            }
             return *this;
         }
 
         /**
-         * Attach a new flow to the flux.
-         * @tparam H the first attractor type in the flow
-         * @tparam A trailing attractor types in the flow
-         * @param f the flow reference
-         * @return an identifier for the flow which may be used to detach it later
+         * Attaches the given flow to the flux.
+         * @param flow the flow to attach
+         * @param count a pointer with which a number that can be used as a parameter to `detach` may be returned.
+         * @return the same flux
          */
-        template <class H, class ...A> size_t attach(const flow<H, A...> &f) {
-            const auto head = f.template attractor<0>();
-            vec.emplace_back(std::bind(&H::template emit<0, flow<H, A...>>, head, std::placeholders::_1, &f));
-            return vec.size();
-        }
-
-        template <class H> size_t attach(const H &&h) {
-            return attach(alembic::flow(h));
+        template <class ...A> flux<X> &attach(flow<A...> &&flow, size_t *count = nullptr) {
+            main_burst.subflows.emplace_back(bind_flow(flow));
+            if (count) {
+                *count = main_burst.subflows.size();
+            }
+            return *this;
         }
 
         /**
-         * Detach a flow from the flux.
-         * @param i the identifier obtained with `attach`
-         * @return whether or not it was successful
+         * Attaches a flow to the exception handling chain. Any `std::exception` thrown during an `emit` will be caught and
+         * passed to this flow.
+         * @param flow the flow to attach
+         * @return the same flux
          */
-        bool detach(const size_t i) {
-            return vec.erase(vec.begin() + i);
+        template <class ...A> flux<X> &except(flow<A...> &&flow, size_t *count = nullptr) {
+            exception_burst.subflows.template emplace_back(bind_flow(flow));
+            if (count) {
+                *count = exception_burst.subflows.size();
+            }
+            return *this;
+        }
+
+        /**
+         * Detaches a flow from the flux.
+         * @param count an identifier returned in a call to `attach`
+         * @return the same flux
+         */
+        flux<X> &detach(size_t count) {
+            std::erase(main_burst.subflows, main_burst.subflows[count - 1]);
+        }
+
+        /**
+         * Detaches a flow from the exception handling chain.
+         * @param count an identifier returned in a call to `except`
+         * @return the same flux
+         */
+        flux<X> &detach_except(size_t count) {
+            std::erase(exception_burst.subflows, exception_burst.subflows[count - 1]);
         }
     };
 }

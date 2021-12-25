@@ -27,25 +27,17 @@ namespace alembic {
     template <class A> struct attractor_traits { };
 
     /**
-     * This concept is currently unused.
-     * @tparam A
+     * Structs must satisfy this concept in order to be used as an attractor
      */
-    template <class A> concept attractor_type = requires() {
-        typename A::input_t;
-        typename A::output_t;
+    template <class A> concept attractor_type = requires {
+        { A::attractor_name } -> std::convertible_to<const char *>;
     } || requires {
-        typename attractor_traits<A>;
+        { attractor_traits<A>::attractor_name } -> std::convertible_to<const char *>;
     };
 
-    template <attractor_type A> struct attractor_traits<A> {
-        using attractor_t = A;
-        using input_t = typename A::input_t;
-        using output_t = typename A::output_t;
-    };
-
-    template <class A, class X, class F, size_t I, class = void> struct attractor_takes: std::false_type { };
-    template <class A, class X, class F, size_t I> struct attractor_takes<A, X, F, I, std::enable_if_t<std::is_invocable_v<decltype(&A::template emit<I, F>), A&, X, F*>>>: std::true_type { };
-    template <class A, class X, class F, size_t I> struct attractor_takes<A, X, F, I, std::enable_if_t<std::is_invocable_v<decltype(&A::template emit<I, F, X>), A&, X, F*>>>: std::true_type { };
+    template <attractor_type A, class X, class F, size_t I, class = void> struct attractor_takes: std::false_type { };
+    template <attractor_type A, class X, class F, size_t I> struct attractor_takes<A, X, F, I, std::enable_if_t<std::is_invocable_v<decltype(&A::template emit<I, F>), A&, X, F*>>>: std::true_type { };
+    template <attractor_type A, class X, class F, size_t I> struct attractor_takes<A, X, F, I, std::enable_if_t<std::is_invocable_v<decltype(&A::template emit<I, F, X>), A&, X, F*>>>: std::true_type { };
 
     /**
      * Determine if an attractor would accept an element at a specific type in a given flow
@@ -54,7 +46,7 @@ namespace alembic {
      * @tparam F the flow type
      * @tparam I the index at which the attractor occurs in the flow
      */
-    template <class A, class X, class F, size_t I> constexpr bool attractor_takes_v = attractor_takes<A, X, F, I>::value;
+    template <attractor_type A, class X, class F, size_t I> constexpr bool attractor_takes_v = attractor_takes<A, X, F, I>::value;
 
     /**
      * Represents a sequence of attractors
@@ -94,7 +86,6 @@ namespace alembic {
         template <size_t I> constexpr auto attractor() const {
             return std::get<I>(attractors);
         }
-
     };
 
     /**
@@ -103,11 +94,25 @@ namespace alembic {
      * @tparam A the attractor type
      * @tparam X the element type
      */
-    template <class A, class X> constexpr bool attractor_default_takes_v = attractor_takes_v<A, X, alembic::flow<X>, 0>;
+    template <attractor_type A, class X> constexpr bool attractor_default_takes_v = attractor_takes_v<A, X, ::alembic::flow<A>, 0>;
 
     template <attractor_type L, attractor_type R> constexpr flow<L, R> operator>>(const L &&l, const R &&r) {
         return flow(l, r);
     }
+
+    /**
+     * Bind the emit function at the head of the given flow. This can be used to pass around a function pointer instead
+     * of the templated `flow`.
+     * @tparam A attractor types
+     * @param flow the flow to bind
+     * @return a function callable with the single argument corresponding to the `x` parameter of the flow's first attractor
+     */
+    template <attractor_type ...A> constexpr auto bind_flow(flow<A...> &flow) {
+        using Head = std::tuple_element_t<0, typename ::alembic::flow<A...>::flow_types>;
+        return std::bind(&Head::template emit<0, ::alembic::flow<A...>>, flow.template attractor<0>(), std::placeholders::_1, &flow);
+    }
+
+    template <class X> using bound_flow_t = void(X);
 }
 
 #endif //ALEMBIC_FLOW_H

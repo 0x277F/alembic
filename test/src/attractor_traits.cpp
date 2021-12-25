@@ -16,9 +16,7 @@
 
 #include <gtest/gtest.h>
 #include <alembic/flow.h>
-#include <alembic/map.h>
-#include <alembic/filter.h>
-#include <alembic/seek.h>
+#include <alembic/attractors_builtin.h>
 
 struct test_struct { };
 
