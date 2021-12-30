@@ -22,72 +22,38 @@
 namespace alembic {
     /**
      * Filter elements based on a predicate.
-     * @tparam X the type of elements to filter.
      */
-    template <class X> struct filter {
+    template <class Pred> struct filter {
         static constexpr auto attractor_name = "filter";
 
-        const std::function<bool(X)> predicate;
+        const Pred predicate;
 
-        template <size_t I, class F> constexpr void emit(const X x, const F *flow) const {
+        explicit constexpr filter(Pred &&_predicate): predicate(_predicate) { }
+
+        template <size_t I, class F, class X> requires std::predicate<Pred, X> constexpr void emit(X &&x, const F *flow) const {
             if constexpr (I + 1 < F::length) {
-                if (predicate(std::move(x))) {
-                    flow->template attractor<I + 1>().template emit<I+1, F>(std::move(x), flow);
+                if (predicate(std::forward<X>(x))) {
+                    flow->template attractor<I + 1>().template emit<I+1, F>(std::forward<X>(x), flow);
                 }
             }
         }
     };
 
     /**
-     * Map one element type to another using a `static_cast`. `static_map` should only be necessary in the case of
-     * explicit-only conversions.
-     * @tparam X the type to convert from
-     * @tparam Y the type to convert to
-     */
-    template <class X, class Y> struct static_map {
-        static constexpr auto attractor_name = "static_map";
-
-        template <size_t I, class F> constexpr void emit(const X x, const F *flow) const {
-            if constexpr(I + 1 < F::length) {
-                flow->template attractor<I+1>().template emit<I+1, F>(static_cast<Y>(std::move(x)), flow);
-            }
-        }
-    };
-
-    /**
      * Map injectively any one element type to another by means of a functor.
-     * @tparam X the type to convert from
-     * @tparam Y the type to convert to
      */
-    template <class X, class Y> struct map {
+    template <class Func> struct map {
         static constexpr auto attractor_name = "map";
-        using functor_t = Y(X);
 
-        std::function<functor_t> functor;
+        Func functor;
 
-        template <size_t I, class F> constexpr void emit(const X x, const F *flow) const {
-            if constexpr (I + 1 >= F::length || std::is_void_v<Y>) {
-                functor(std::move(x));
+        explicit constexpr map(Func &&_functor): functor(_functor) { }
+
+        template <size_t I, class F, class X> requires std::is_invocable_v<Func, X> constexpr void emit(X &&x, const F *flow) {
+            if constexpr (I + 1 >= F::length || std::is_void_v<std::invoke_result_t<Func, X>>) {
+                functor(std::forward<X>(x));
             } else {
-                flow->template attractor<I+1>().template emit<I+1, F>(functor(std::move(x)), flow);
-            }
-        }
-    };
-
-    /**
-     * Apply the given functor to every element statically assignable to the given type.
-     * @tparam X the type
-     */
-    template <class X> struct tap {
-        static constexpr auto attractor_name = "tap";
-        using functor_t = void(X);
-
-        std::function<functor_t> functor;
-
-        template <size_t I, class F> constexpr void emit(const X x, const F *flow) const {
-            functor(std::move(x));
-            if constexpr (I + 1 < F::length) {
-                flow->template attractor<I+1>().template emit<I+1, F>(std::move(x), flow);
+                flow->template attractor<I+1>().template emit<I+1, F>(functor(std::forward<X>(x)), flow);
             }
         }
     };
@@ -104,13 +70,31 @@ namespace alembic {
         alembic::flow<H, A...> subflow;
 
         part(const flow<H, A...> &&_subflow): subflow(std::move(_subflow)) { }
-        part(const H &&_attractor): subflow { std::move(_attractor) } { }
+        part(const H &&_attractor): part ({ std::move(_attractor) }) { }
 
-        template <size_t I, class F, class X> constexpr void emit(const X &&x, const F *flow) const {
-            subflow.template attractor<0>().template emit<0, decltype(subflow)>(x, &subflow);
+        template <size_t I, class F, class X> constexpr void emit(X &&x, const F *flow) const {
+            subflow.template attractor<0>().template emit<0, decltype(subflow)>(std::forward<X>(x), &subflow);
             if constexpr(I + 1 < F::length) {
-                flow->template attractor<I + 1>().template emit<I + 1, F>(std::move(x), flow);
+                flow->template attractor<I + 1>().template emit<I + 1, F>(std::forward<X>(x), flow);
             }
+        }
+    };
+
+    template <class H, class ...A> struct join {
+        static constexpr auto attractor_name = "join";
+
+        alembic::flow<H, A...> subflow;
+
+        join(const flow<H, A...> &&_subflow): subflow(std::move(_subflow)) { }
+        join(const H &&_attractor): join ({ std::move(_attractor) }) { }
+
+        template <size_t I, class F, class X> constexpr void emit(X &&x, const F *flow) const {
+            auto captured = subflow >> map { [flow]<class T>(T &&t){
+                if constexpr (I + 1 < F::length) {
+                    flow->template attractor<I + 1>().template emit<I + 1, F>(std::forward<T>(t), flow);
+                }
+            } };
+            captured.template attractor<0>().template emit<0, decltype(captured)>(std::forward<X>(x), &captured);
         }
     };
 
@@ -121,13 +105,12 @@ namespace alembic {
     struct seek {
         static constexpr auto attractor_name = "seek";
 
-        template <size_t I, class F, class X, class = void> struct find_next: std::enable_if_t<I+1 < F::length, find_next<I+1, F, X>> { };
-        template <size_t I, class F, class X> struct find_next<I, F, X, std::enable_if_t<alembic::attractor_takes_v<std::tuple_element_t<I, typename F::flow_types>, X, F, I>>>: std::integral_constant<size_t, I> { };
-
-        template <size_t I, class F, class X> constexpr void emit(const X x, const F *flow) const {
+        template <size_t I, class F, class X> constexpr void emit(X &&x, const F *flow) const {
             if constexpr (I + 1 < F::length) {
-                constexpr size_t target = find_next<I+1, F, X>::value;
-                flow->template attractor<target>().template emit<target, F>(std::move(x), flow);
+                constexpr auto target = find_next<I+1, F, X>::value;
+                if constexpr (target) {
+                    flow->template attractor<target>().template emit<target, F>(std::forward<X>(x), flow);
+                }
             }
         }
     };
@@ -136,22 +119,77 @@ namespace alembic {
      * Like `part` but dynamic.
      * @tparam Cont the container type to use
      */
-    template <class X, class Cont = std::vector<std::function<bound_flow_t<X>>>> struct burst {
+    template <class X, class Cont = std::vector<bound_flow<X>>> struct burst {
         static constexpr auto attractor_name = "burst";
         Cont subflows;
 
         template <class ...F> constexpr burst(F ..._flows): subflows({ bind_flow(_flows)... }) { }
 
-        inline void inner_emit(X x) const {
-            std::for_each(std::begin(subflows), std::end(subflows), [&](auto a){ std::invoke(a, x); });
+        constexpr void inner_emit(X &&x) const {
+            std::for_each(std::begin(subflows), std::end(subflows), [&](const bound_flow<X> &a){ std::invoke(a.emitter, std::forward<X>(x)); });
         }
 
-        template <size_t I, class F> constexpr void emit(const X x, const F *flow) const {
-            inner_emit(x);
+        template <size_t I, class F, class> constexpr void emit(X &&x, const F *flow) const {
+            inner_emit(std::forward<X>(x));
 
             if constexpr(I + 1 < F::length) {
-                flow->template attractor<I + 1>().template emit<I + 1, F>(std::move(x), flow);
+                flow->template attractor<I + 1>().template emit<I + 1, F>(std::forward<X>(x), flow);
             }
+        }
+    };
+
+    /**
+     * Collects N values convertible to Y, then passes them to the next element in the flow as an `std::array<Y, N>`.
+     */
+    template <class Y, size_t N> struct collect_n {
+        static constexpr auto attractor_name = "collect_n";
+
+        std::array<Y, N> values;
+        size_t i = 0;
+
+        template <size_t I, class F, class X> requires std::is_convertible_v<X, Y> inline void emit(X &&x, const F *flow) {
+            values[i++] = std::forward<X>(x);
+            if (i == N) {
+                i = 0;
+                if constexpr(I + 1 < F::length) {
+                    flow->template attractor<I + 1>().template emit<I + 1, F>(values, flow);
+                }
+            }
+        }
+    };
+
+    template <class Reducer> struct reduce {
+        static constexpr auto attractor_name = "reduce";
+
+        Reducer reducer;
+        reduce(Reducer &&_reducer): reducer(_reducer) { }
+
+        template <size_t I, class F, class X> requires std::is_invocable_v<Reducer, X> void emit(X &&x, const F *flow) {
+            auto opt = std::invoke(reducer, std::forward<X>(x));
+            if (I + 1 < F::length && opt.has_value()) {
+                flow->template attractor<I + 1>().template emit<I + 1, F>(std::move(opt.value()), flow);
+            }
+        }
+    };
+
+    template <class T> concept iterable_type = requires (T t) {
+        std::begin(t);
+        std::end(t);
+    };
+
+    /**
+     * Flattens a container type and emits each of its elements to the flow. The expressions `std::begin(v)` and `std::end(v)` must be
+     * well-formed for a container `v`.
+     */
+    struct flat {
+        static constexpr auto attractor_name = "flat";
+
+        template <size_t I, class F, iterable_type X> constexpr void emit(X &&x, const F *flow) const {
+            std::for_each(std::begin(x), std::end(x), [flow](auto v){
+                if constexpr(I + 1 < F::length) {
+                    flow->template attractor<I + 1>().template emit<I + 1, F>(v, flow);
+                }
+            });
         }
     };
 }

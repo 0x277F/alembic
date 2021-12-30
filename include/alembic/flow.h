@@ -36,8 +36,8 @@ namespace alembic {
     };
 
     template <attractor_type A, class X, class F, size_t I, class = void> struct attractor_takes: std::false_type { };
-    template <attractor_type A, class X, class F, size_t I> struct attractor_takes<A, X, F, I, std::enable_if_t<std::is_invocable_v<decltype(&A::template emit<I, F>), A&, X, F*>>>: std::true_type { };
-    template <attractor_type A, class X, class F, size_t I> struct attractor_takes<A, X, F, I, std::enable_if_t<std::is_invocable_v<decltype(&A::template emit<I, F, X>), A&, X, F*>>>: std::true_type { };
+    template <attractor_type A, class X, class F, size_t I> struct attractor_takes<A, X, F, I, std::enable_if_t<std::is_invocable_v<decltype(&A::template emit<I, F>), A&, X&&, F*>>>: std::true_type { };
+    template <attractor_type A, class X, class F, size_t I> struct attractor_takes<A, X, F, I, std::enable_if_t<std::is_invocable_v<decltype(&A::template emit<I, F, X>), A&, X&&, F*>>>: std::true_type { };
 
     /**
      * Determine if an attractor would accept an element at a specific type in a given flow
@@ -48,11 +48,15 @@ namespace alembic {
      */
     template <attractor_type A, class X, class F, size_t I> constexpr bool attractor_takes_v = attractor_takes<A, X, F, I>::value;
 
+    template <size_t I, class F, class X, class = void> struct find_next: std::conditional_t<I+1 < F::length, find_next<I+1, F, X>, std::bool_constant<false>> { };
+    template <size_t I, class F, class X> struct find_next<I, F, X, std::enable_if_t<alembic::attractor_takes_v<std::tuple_element_t<I, typename F::flow_types>, X, F, I>>>: std::integral_constant<size_t, I> { };
+
     /**
      * Represents a sequence of attractors
      * @tparam A the types of attractors
      */
     template <attractor_type ...A> struct flow {
+
         using flow_types = std::tuple<A...>;
 
         constexpr static size_t length = sizeof...(A);
@@ -100,6 +104,13 @@ namespace alembic {
         return flow(l, r);
     }
 
+    using removal_tag_t = void *;
+
+    template <class X> struct bound_flow {
+        std::function<void(X)> emitter;
+        removal_tag_t remove_tag;
+    };
+
     /**
      * Bind the emit function at the head of the given flow. This can be used to pass around a function pointer instead
      * of the templated `flow`.
@@ -107,12 +118,17 @@ namespace alembic {
      * @param flow the flow to bind
      * @return a function callable with the single argument corresponding to the `x` parameter of the flow's first attractor
      */
-    template <attractor_type ...A> constexpr auto bind_flow(flow<A...> &flow) {
-        using Head = std::tuple_element_t<0, typename ::alembic::flow<A...>::flow_types>;
-        return std::bind(&Head::template emit<0, ::alembic::flow<A...>>, flow.template attractor<0>(), std::placeholders::_1, &flow);
+    template <class X, attractor_type ...A> constexpr bound_flow<X> bind_flow(flow<A...> &flow, removal_tag_t remove_tag = nullptr) {
+        constexpr size_t index = find_next<0, ::alembic::flow<A...>, X>::value;
+        using Att = std::tuple_element_t<index, typename ::alembic::flow<A...>::flow_types>;
+        return {
+                std::bind(&Att::template emit<index, ::alembic::flow<A...>, X>,
+                          flow.template attractor<index>(),
+                          std::placeholders::_1,
+                          &flow),
+                remove_tag
+        };
     }
-
-    template <class X> using bound_flow_t = void(X);
 }
 
 #endif //ALEMBIC_FLOW_H

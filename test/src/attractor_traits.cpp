@@ -21,19 +21,17 @@
 struct test_struct { };
 
 TEST(attractor_traits, AttractorDefaultTakes) {
-    EXPECT_TRUE((alembic::attractor_default_takes_v<alembic::static_map<int, long>, int>));
-    EXPECT_TRUE((alembic::attractor_default_takes_v<alembic::static_map<int, long>, double>)); // this is weird behavior but it makes sense.
-    EXPECT_TRUE((alembic::attractor_default_takes_v<alembic::map<int, long>, int>));
-    EXPECT_TRUE((alembic::attractor_default_takes_v<alembic::map<int, long>, double>));
-    EXPECT_TRUE((alembic::attractor_default_takes_v<alembic::filter<int>, int>));
-    EXPECT_FALSE((alembic::attractor_default_takes_v<alembic::filter<int>, int*>));
-    EXPECT_FALSE((alembic::attractor_default_takes_v<alembic::map<test_struct, bool>, int>));
+    EXPECT_TRUE((alembic::attractor_default_takes_v<alembic::map<decltype([](int x){ })>, int>));
+    EXPECT_TRUE((alembic::attractor_default_takes_v<alembic::map<decltype([](int x){ })>, double>));
+    EXPECT_TRUE((alembic::attractor_default_takes_v<alembic::filter<decltype([](int x){ return false; })>, int>));
+    EXPECT_FALSE((alembic::attractor_default_takes_v<alembic::filter<decltype([](int x){ return false; })>, int*>));
+    EXPECT_FALSE((alembic::attractor_default_takes_v<alembic::map<decltype([](test_struct x){ })>, int>));
 }
 
 TEST(attractor_traits, SeekFindNext) {
-    auto flow = alembic::map<double, double> { [](const auto &&x) { return x / 2; } }
+    auto flow = alembic::map { [](const auto &&x) { return x / 2; } }
             >> alembic::seek { }
-            >> alembic::static_map<test_struct, double> { }
-            >> alembic::map<double, void> { [](const auto &&x) { std::cout << x; } };
-    EXPECT_EQ((alembic::seek::find_next<2, decltype(flow), double>::value), 3);
+            >> alembic::filter([](const test_struct &&x){ return false; })
+            >> alembic::map  { [](const auto &&x) { std::cout << x; } };
+    EXPECT_EQ((alembic::find_next<2, decltype(flow), double>::value), 3);
 }

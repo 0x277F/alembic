@@ -22,12 +22,12 @@ TEST(builtins, concept_check) {
     struct test_struct { };
 
     static_assert(alembic::attractor_type<alembic::filter<test_struct>>);
-    static_assert(alembic::attractor_type<alembic::static_map<test_struct, test_struct>>);
-    static_assert(alembic::attractor_type<alembic::map<test_struct, test_struct>>);
-    static_assert(alembic::attractor_type<alembic::tap<test_struct>>);
+    static_assert(alembic::attractor_type<alembic::map<decltype([](int x){ })>>);
     static_assert(alembic::attractor_type<alembic::part<alembic::filter<test_struct>>>);
     static_assert(alembic::attractor_type<alembic::seek>);
     static_assert(alembic::attractor_type<alembic::burst<test_struct>>);
+    static_assert(alembic::attractor_type<alembic::collect_n<int, 5>>);
+    static_assert(alembic::attractor_type<alembic::flat>);
 
     EXPECT_FALSE(alembic::attractor_type<test_struct>);
 }

@@ -18,8 +18,8 @@
 #define ALEMBIC_FLUX_H
 
 #include <exception>
+#include <tuple>
 #include "attractors_builtin.h"
-#include "util.h"
 
 namespace alembic {
 
@@ -27,9 +27,12 @@ namespace alembic {
      * Represents the point at which elements might be emitted to a flow.
      * @tparam X the type of element being admitted to the head of the flow
      */
-    template <class X> class flux {
-        burst<X> main_burst;
-        burst<const std::exception &> exception_burst;
+    template <class ...X> class flux {
+        std::tuple<burst<X>...> main_burst;
+        burst<const std::exception_ptr> exception_burst;
+
+        template <class From, class T, class ...U> struct first_type_convertible: std::conditional_t<std::is_convertible_v<From, T>, std::type_identity<T>, first_type_convertible<From, U...>> { };
+        template <class From, class T> struct first_type_convertible<From, T>: std::enable_if_t<std::is_convertible_v<From, T>, std::type_identity<T>> { };
 
     public:
         /**
@@ -37,11 +40,14 @@ namespace alembic {
          * @param x the element ot emit
          * @return the same flux
          */
-        const flux<X> &emit(X x) const {
+        template <class T> const flux<X...> &emit(T &&t) const {
+            static_assert((std::is_convertible_v<T, X> || ...), "cannot emit type from flux");
+
+            using burst_type_t = typename first_type_convertible<T, X...>::type;
             try {
-                main_burst.inner_emit(x);
-            } catch (const std::exception &ex) {
-                exception_burst.inner_emit(ex);
+                std::get<burst<burst_type_t>>(main_burst).inner_emit(std::forward<T>(t));
+            } catch (...) {
+                exception_burst.inner_emit(std::current_exception());
             }
             return *this;
         }
@@ -49,47 +55,62 @@ namespace alembic {
         /**
          * Attaches the given flow to the flux.
          * @param flow the flow to attach
-         * @param count a pointer with which a number that can be used as a parameter to `detach` may be returned.
+         * @param remove_tag a pointer in which a remove tag that can be used as a parameter to `detach` may be returned.
          * @return the same flux
          */
-        template <class ...A> flux<X> &attach(flow<A...> &&flow, size_t *count = nullptr) {
-            main_burst.subflows.emplace_back(bind_flow(flow));
-            if (count) {
-                *count = main_burst.subflows.size();
+        template <attractor_type ...A> flux<X...> &attach(flow<A...> flow, removal_tag_t *remove_tag = nullptr) {
+            auto tag = new removal_tag_t;
+
+            (std::get<burst<X>>(main_burst).subflows.push_back(bind_flow<X>(flow, tag)), ...);
+
+            if (remove_tag) {
+                *remove_tag = tag;
             }
             return *this;
         }
 
+        template <attractor_type A> flux<X...> &attach(A attractor, removal_tag_t *remove_tag = nullptr) {
+            return attach(std::move(flow(attractor)), remove_tag);
+        }
+
         /**
-         * Attaches a flow to the exception handling chain. Any `std::exception` thrown during an `emit` will be caught and
-         * passed to this flow.
+         * Attaches a flow to the exception handling chain. Any uncaught exception thrown during an `emit` will be caught and
+         * passed as an `std::exception_ptr` to this flow.
          * @param flow the flow to attach
+         * @tparam Ex exception type to catch.
          * @return the same flux
          */
-        template <class ...A> flux<X> &except(flow<A...> &&flow, size_t *count = nullptr) {
-            exception_burst.subflows.template emplace_back(bind_flow(flow));
-            if (count) {
-                *count = exception_burst.subflows.size();
+        template <attractor_type ...A> flux<X...> &except(flow<A...> flow, removal_tag_t *remove_tag = nullptr) {
+            auto tag = new removal_tag_t;
+            exception_burst.subflows.push_back(bind_flow<const std::exception_ptr>(flow, tag));
+            if (remove_tag) {
+                *remove_tag = tag;
             }
             return *this;
+        }
+
+        template <attractor_type A> flux<X...> &except(A attractor, removal_tag_t *remove_tag = nullptr) {
+            return except(std::move(flow(attractor)), remove_tag);
         }
 
         /**
          * Detaches a flow from the flux.
-         * @param count an identifier returned in a call to `attach`
+         * @param remove_tag an identifier returned in a call to `attach`
          * @return the same flux
          */
-        flux<X> &detach(size_t count) {
-            std::erase(main_burst.subflows, main_burst.subflows[count - 1]);
+        flux<X...> &detach(removal_tag_t &remove_tag) {
+            (std::erase_if(std::get<burst<X>>(main_burst).subflows, [remove_tag]<class U>(bound_flow<U> f){ return remove_tag == f.remove_tag; }), ...);
+            return *this;
         }
 
         /**
          * Detaches a flow from the exception handling chain.
-         * @param count an identifier returned in a call to `except`
+         * @param remove_tag an identifier returned in a call to `except`
          * @return the same flux
          */
-        flux<X> &detach_except(size_t count) {
-            std::erase(exception_burst.subflows, exception_burst.subflows[count - 1]);
+        flux<X...> &detach_except(removal_tag_t &remove_tag) {
+            std::erase_if(exception_burst.subflows, [remove_tag]<class T>(bound_flow<T> f){ return remove_tag == f.remove.tag; });
+            return *this;
         }
     };
 }
