@@ -119,17 +119,17 @@ namespace alembic {
      * Like `part` but dynamic.
      * @tparam Cont the container type to use
      */
-    template <class X, class Cont = std::vector<bound_flow<X>>> struct burst {
+    template <class Y, class Cont = std::vector<bound_flow<Y>>> struct burst {
         static constexpr auto attractor_name = "burst";
         Cont subflows;
 
         template <class ...F> constexpr burst(F ..._flows): subflows({ bind_flow(_flows)... }) { }
 
-        constexpr void inner_emit(X &&x) const {
-            std::for_each(std::begin(subflows), std::end(subflows), [&](const bound_flow<X> &a){ std::invoke(a.emitter, std::forward<X>(x)); });
+        template <class X> requires std::is_convertible_v<X, Y> constexpr void inner_emit(X &&x) const {
+            std::for_each(std::begin(subflows), std::end(subflows), [&](const bound_flow<Y> &a){ std::invoke(a.emitter, std::forward<X>(x)); });
         }
 
-        template <size_t I, class F, class> constexpr void emit(X &&x, const F *flow) const {
+        template <size_t I, class F, class X> requires std::is_convertible_v<X, Y> constexpr void emit(X &&x, const F *flow) const {
             inner_emit(std::forward<X>(x));
 
             if constexpr(I + 1 < F::length) {
