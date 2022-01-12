@@ -35,3 +35,12 @@ TEST(attractor_traits, SeekFindNext) {
             >> alembic::map  { [](const auto &&x) { std::cout << x; } };
     EXPECT_EQ((alembic::find_next<2, decltype(flow), double>::value), 3);
 }
+
+TEST(attractor_traits, SeekFindPrev) {
+    auto flow = alembic::map { [](const auto &&x) { return x / 2; } }
+            >> alembic::seek { }
+            >> alembic::filter([](const test_struct &&x){ return false; })
+            >> alembic::map  { [](const auto &&x) { std::cout << x; } };
+
+    EXPECT_EQ((alembic::find_prev<2, decltype(flow), const double&&>::value), 1);
+}

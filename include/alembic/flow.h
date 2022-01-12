@@ -51,6 +51,9 @@ namespace alembic {
     template <size_t I, class F, class X, class = void> struct find_next: std::conditional_t<I+1 < F::length, find_next<I+1, F, X>, std::bool_constant<false>> { };
     template <size_t I, class F, class X> struct find_next<I, F, X, std::enable_if_t<alembic::attractor_takes_v<std::tuple_element_t<I, typename F::flow_types>, X, F, I>>>: std::integral_constant<size_t, I> { };
 
+    template <size_t I, class F, class X, class = void> struct find_prev: std::conditional_t<I-1 >= 0, find_prev<I-1, F, X>, std::bool_constant<false>> { };
+    template <size_t I, class F, class X> struct find_prev<I, F, X, std::enable_if_t<alembic::attractor_takes_v<std::tuple_element_t<I, typename F::flow_types>, X, F, I>>>: std::integral_constant<size_t, I> { };
+
     /**
      * Represents a sequence of attractors
      * @tparam A the types of attractors
