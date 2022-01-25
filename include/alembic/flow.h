@@ -132,6 +132,12 @@ namespace alembic {
                 remove_tag
         };
     }
+
+    template <size_t I, class F, class X> constexpr void try_emit(X &&x, F *flow) {
+        if constexpr (I < F::length) {
+            flow->template attractor<I>().template emit<I, F>(std::forward<X>(x), flow);
+        }
+    }
 }
 
 #endif //ALEMBIC_FLOW_H

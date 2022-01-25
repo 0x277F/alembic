@@ -31,10 +31,8 @@ namespace alembic {
         explicit constexpr filter(Pred &&_predicate): predicate(_predicate) { }
 
         template <size_t I, class F, class X> requires std::predicate<Pred, X> constexpr void emit(X &&x, const F *flow) const {
-            if constexpr (I + 1 < F::length) {
-                if (predicate(std::forward<X>(x))) {
-                    flow->template attractor<I + 1>().template emit<I+1, F>(std::forward<X>(x), flow);
-                }
+            if (predicate(std::forward<X>(x))) {
+                try_emit<I+1>(x, flow);
             }
         }
     };
@@ -50,10 +48,10 @@ namespace alembic {
         explicit constexpr map(Func &&_functor): functor(_functor) { }
 
         template <size_t I, class F, class X> requires std::is_invocable_v<Func, X> constexpr void emit(X &&x, const F *flow) {
-            if constexpr (I + 1 >= F::length || std::is_void_v<std::invoke_result_t<Func, X>>) {
+            if constexpr (std::is_void_v<std::invoke_result_t<Func, X>>) {
                 functor(std::forward<X>(x));
             } else {
-                flow->template attractor<I+1>().template emit<I+1, F>(functor(std::forward<X>(x)), flow);
+                try_emit<I+1>(functor(std::forward<X>(x)), flow);
             }
         }
     };
@@ -73,10 +71,8 @@ namespace alembic {
         part(const H &&_attractor): part ({ std::move(_attractor) }) { }
 
         template <size_t I, class F, class X> constexpr void emit(X &&x, const F *flow) const {
-            subflow.template attractor<0>().template emit<0, decltype(subflow)>(std::forward<X>(x), &subflow);
-            if constexpr(I + 1 < F::length) {
-                flow->template attractor<I + 1>().template emit<I + 1, F>(std::forward<X>(x), flow);
-            }
+            try_emit<0>(x, &subflow);
+            try_emit<I+1>(x, flow);
         }
     };
 
@@ -90,9 +86,7 @@ namespace alembic {
 
         template <size_t I, class F, class X> constexpr void emit(X &&x, const F *flow) const {
             auto captured = subflow >> map { [flow]<class T>(T &&t){
-                if constexpr (I + 1 < F::length) {
-                    flow->template attractor<I + 1>().template emit<I + 1, F>(std::forward<T>(t), flow);
-                }
+                try_emit<I+1>(t, flow);
             } };
             captured.template attractor<0>().template emit<0, decltype(captured)>(std::forward<X>(x), &captured);
         }
@@ -131,10 +125,7 @@ namespace alembic {
 
         template <size_t I, class F, class X> requires std::is_convertible_v<X, Y> constexpr void emit(X &&x, const F *flow) const {
             inner_emit(std::forward<X>(x));
-
-            if constexpr(I + 1 < F::length) {
-                flow->template attractor<I + 1>().template emit<I + 1, F>(std::forward<X>(x), flow);
-            }
+            try_emit<I+1>(x, flow);
         }
     };
 
@@ -151,9 +142,7 @@ namespace alembic {
             values[i++] = std::forward<X>(x);
             if (i == N) {
                 i = 0;
-                if constexpr(I + 1 < F::length) {
-                    flow->template attractor<I + 1>().template emit<I + 1, F>(values, flow);
-                }
+                try_emit<I+1>(values, flow);
             }
         }
     };
@@ -166,8 +155,8 @@ namespace alembic {
 
         template <size_t I, class F, class X> requires std::is_invocable_v<Reducer, X> void emit(X &&x, const F *flow) {
             auto opt = std::invoke(reducer, std::forward<X>(x));
-            if (I + 1 < F::length && opt.has_value()) {
-                flow->template attractor<I + 1>().template emit<I + 1, F>(std::move(opt.value()), flow);
+            if (opt.has_value()) {
+                try_emit<I+1>(std::move(opt.value()), flow);
             }
         }
     };
@@ -186,9 +175,7 @@ namespace alembic {
 
         template <size_t I, class F, iterable_type X> constexpr void emit(X &&x, const F *flow) const {
             std::for_each(std::begin(x), std::end(x), [flow](auto v){
-                if constexpr(I + 1 < F::length) {
-                    flow->template attractor<I + 1>().template emit<I + 1, F>(v, flow);
-                }
+                try_emit<I+1>(v, flow);
             });
         }
     };
